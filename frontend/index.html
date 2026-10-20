@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Tienda de música: álbumes, stock en tiempo real y compra rápida.">
+    <title>Vinilo Store · Tienda de música</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header class="topbar">
+        <a class="brand" href="#">
+            <span class="brand-dot"></span> Vinilo Store
+        </a>
+        <input id="buscador" type="search" placeholder="Buscar álbum, artista o género" aria-label="Buscar">
+    </header>
+
+    <section class="hero">
+        <p class="eyebrow">Colección destacada</p>
+        <h1>Música que vale <span>la pena escuchar</span></h1>
+        <p class="sub">Lo mejor de cada género</p>
+    </section>
+
+    <main>
+        <section id="grid" class="grid" aria-live="polite"></section>
+        <p id="vacio" class="vacio" hidden>No hay álbumes para mostrar.</p>
+    </main>
+
+    <footer class="footer">Vinilo Store · Proyecto académico DevOps</footer>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script src="app.js"></script>
+</body>
+
+</html>

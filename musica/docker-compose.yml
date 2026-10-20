@@ -1,0 +1,70 @@
+name: musica
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: musica-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_esto}
+      POSTGRES_DB: musica
+    volumes:
+      - musica-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d musica"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    mem_limit: 320m
+    cpus: 0.50
+    networks: [musica-net]
+
+  musica:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: musica-backend:${IMAGE_TAG:-latest}
+    container_name: musica-backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/musica
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_esto}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 40s
+    mem_limit: 320m
+    cpus: 0.50
+    networks: [musica-net]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: musica-frontend:${IMAGE_TAG:-latest}
+    container_name: musica-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      musica:
+        condition: service_healthy
+    mem_limit: 64m
+    cpus: 0.25
+    networks: [musica-net]
+
+volumes:
+  musica-data:
+
+networks:
+  musica-net:
+    driver: bridge
