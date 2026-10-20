@@ -37,7 +37,7 @@ jobs:
           cache: maven
 
       - name: 3. Instalar Snyk CLI
-        uses: snyk/actions/setup@master
+        uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce
 
       - name: 4. Preparar proyecto Maven
         working-directory: musica
@@ -48,6 +48,7 @@ jobs:
         shell: bash
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          SNYK_CFG_ORG: matidroid1
         run: |
           set +e
           snyk test \
