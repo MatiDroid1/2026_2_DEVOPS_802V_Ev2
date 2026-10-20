@@ -37,7 +37,7 @@ jobs:
           cache: maven
 
       - name: 3. Instalar Snyk CLI
-        run: npm install -g snyk
+        uses: snyk/actions/setup@master
 
       - name: 4. Preparar proyecto Maven
         working-directory: musica
