@@ -43,23 +43,27 @@ jobs:
         working-directory: musica
         run: mvn -B -DskipTests clean install
 
+      - name: 4b. Probar árbol de dependencias con Maven
+        working-directory: musica
+        run: mvn -B dependency:tree
+
       - name: 5. Analizar dependencias
         working-directory: musica
         shell: bash
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-          SNYK_CFG_ORG: matidroid1
         run: |
           set +e
           snyk test \
             --file=pom.xml \
             --severity-threshold=high \
             --json-file-output=snyk-report.json \
-            -d 2>&1 | tail -n 120
-          SNYK_EXIT_CODE=${PIPESTATUS[0]}
+            -d > snyk-debug.log 2>&1
+          SNYK_EXIT_CODE=$?
           set -e
 
           echo "Código de salida Snyk: $SNYK_EXIT_CODE"
+          grep -n -i -E "mvn|maven|dependency:tree|exec|java|JAVA_HOME" snyk-debug.log | head -60
 
           if [ "$SNYK_EXIT_CODE" -le 1 ]; then
             exit 0
@@ -68,12 +72,14 @@ jobs:
           echo "Error técnico ejecutando Snyk."
           exit "$SNYK_EXIT_CODE"
 
-      - name: 6. Publicar reporte Snyk
+      - name: 6. Publicar reportes Snyk
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: snyk-report
-          path: musica/snyk-report.json
+          path: |
+            musica/snyk-report.json
+            musica/snyk-debug.log
           if-no-files-found: warn
 
   pruebas:
