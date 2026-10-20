@@ -23,7 +23,7 @@ services:
 
   musica:
     build:
-      context: .
+      context: ./musica
       dockerfile: Dockerfile
     image: musica-backend:${IMAGE_TAG:-latest}
     container_name: musica-backend
@@ -49,7 +49,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: frontend/Dockerfile
     image: musica-frontend:${IMAGE_TAG:-latest}
     container_name: musica-frontend
     restart: unless-stopped
