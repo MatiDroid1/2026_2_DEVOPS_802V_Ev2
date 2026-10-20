@@ -1,0 +1,310 @@
+# ==============================================================
+# MUSICA - CI/CD CON PRUEBAS, JACOCO, SNYK, SONAR Y DOCKER COMPOSE
+# se usa el ejemplo del profesor para armar este workflow de CI/CD :)
+# ==============================================================
+name: Musica CI-CD - Tests JaCoCo y Docker Compose
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: musica-production
+  cancel-in-progress: true
+
+jobs:
+
+  seguridad_snyk:
+    name: Seguridad Snyk - Dependencias
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Descargar código
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 3. Instalar Snyk CLI
+        uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce
+
+      - name: 4. Dar permisos al Maven Wrapper
+        working-directory: musica
+        run: chmod +x mvnw
+
+      - name: 5. Preparar proyecto Maven
+        working-directory: musica
+        run: mvn -B -DskipTests clean install
+
+      - name: 6. Analizar dependencias
+        working-directory: musica
+        shell: bash
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          set +e
+          snyk test \
+            --file=pom.xml \
+            --severity-threshold=high \
+            --json-file-output=snyk-report.json
+          SNYK_EXIT_CODE=$?
+          set -e
+
+          echo "Código de salida Snyk: $SNYK_EXIT_CODE"
+
+          if [ "$SNYK_EXIT_CODE" -eq 0 ]; then
+            echo "Snyk terminó correctamente."
+            exit 0
+          fi
+
+          if [ "$SNYK_EXIT_CODE" -eq 1 ]; then
+            echo "Snyk encontró vulnerabilidades."
+            exit 0
+          fi
+
+          echo "Error técnico ejecutando Snyk."
+          exit "$SNYK_EXIT_CODE"
+
+      - name: 7. Publicar reporte Snyk
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-report
+          path: musica/snyk-report.json
+          if-no-files-found: warn
+
+  pruebas:
+    name: Pruebas unitarias y cobertura JaCoCo
+    needs: seguridad_snyk
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Descargar código
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 3. Ejecutar pruebas y generar JaCoCo
+        working-directory: musica
+        run: mvn -B clean verify
+
+      - name: 4. Publicar reporte JaCoCo
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-musica
+          path: musica/target/site/jacoco/
+          if-no-files-found: error
+
+  sonarcloud:
+    name: Análisis estático SonarQube Cloud
+    needs: pruebas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Descargar código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 2. Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 3. Preparar proyecto Maven
+        working-directory: musica
+        run: mvn -B -DskipTests install
+
+      - name: 4. Descargar reporte JaCoCo
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-musica
+          path: musica/target/site/jacoco/
+
+      - name: 5. Validar configuración SonarQube Cloud
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+        run: |
+          test -n "$SONAR_TOKEN" || exit 1
+          test -n "$SONAR_PROJECT_KEY" || exit 1
+          test -n "$SONAR_ORGANIZATION" || exit 1
+          echo "Configuración SonarQube Cloud OK."
+
+      - name: 6. Ejecutar análisis SonarQube Cloud
+        working-directory: musica
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+        run: |
+          mvn -B \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
+            -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
+            -Dsonar.organization="$SONAR_ORGANIZATION" \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.token="$SONAR_TOKEN" \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+            -Dsonar.qualitygate.wait=false
+
+  validar:
+    name: Validar Dockerfiles y Compose
+    needs: sonarcloud
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Descargar código
+        uses: actions/checkout@v4
+
+      - name: 2. Validar archivos del proyecto
+        shell: bash
+        run: |
+          test -f musica/pom.xml
+          test -f musica/Dockerfile
+          test -f frontend/Dockerfile
+          test -f docker-compose.yml
+
+      - name: 3. Validar sintaxis de Docker Compose
+        run: docker compose config
+
+      - name: 4. Construir imágenes con Docker Compose
+        run: docker compose build
+
+  deploy:
+    name: Desplegar stack en AWS EC2
+    needs: validar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: 1. Descargar código
+        uses: actions/checkout@v4
+
+      - name: 2. Preparar clave SSH
+        shell: bash
+        env:
+          AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AWS_SSH_KEY" | tr -d '\r' > ~/.ssh/musica.pem
+          chmod 600 ~/.ssh/musica.pem
+
+          for i in {1..30}; do
+            if ssh-keyscan -T 5 -H "$AWS_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "SSH disponible."
+              exit 0
+            fi
+            echo "Esperando SSH... intento $i/30"
+            sleep 10
+          done
+
+          echo "ERROR: EC2 no respondió por SSH."
+          exit 1
+
+      - name: 3. Esperar que Docker esté listo en la EC2
+        shell: bash
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+        run: |
+          for i in {1..72}; do
+            if ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" \
+              "sudo docker compose version" >/dev/null 2>&1; then
+              echo "EC2 preparada correctamente."
+              exit 0
+            fi
+            echo "Esperando Docker... intento $i/72"
+            sleep 10
+          done
+
+          echo "ERROR: Docker no quedó disponible en la EC2."
+          exit 1
+
+      - name: 4. Crear paquete para EC2
+        shell: bash
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='*/target' \
+            --exclude='.env' \
+            -czf /tmp/musica-compose.tar.gz .
+
+      - name: 5. Copiar proyecto a EC2
+        shell: bash
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+        run: |
+          scp -i ~/.ssh/musica.pem \
+            /tmp/musica-compose.tar.gz \
+            "$AWS_USER@$AWS_HOST:/tmp/musica-compose.tar.gz"
+
+          ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" '
+            set -e
+            sudo mkdir -p /opt/musica/current
+            sudo rm -rf /opt/musica/current/*
+            sudo tar -xzf /tmp/musica-compose.tar.gz -C /opt/musica/current
+            rm -f /tmp/musica-compose.tar.gz
+          '
+
+      - name: 6. Orquestar contenedores con Docker Compose
+        shell: bash
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+        run: |
+          ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" '
+            set -e
+            cd /opt/musica/current
+            sudo docker compose up -d --build --remove-orphans
+            echo "Estado del stack:"
+            sudo docker compose ps
+          '
+
+      - name: 7. Esperar frontend y verificar despliegue
+        shell: bash
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+        run: |
+          ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" '
+            set -e
+            cd /opt/musica/current
+
+            for i in {1..60}; do
+              if curl -fsS http://127.0.0.1/ >/dev/null 2>&1; then
+                echo "Frontend disponible."
+                sudo docker compose ps
+                exit 0
+              fi
+              echo "Esperando stack... intento $i/60"
+              sleep 5
+            done
+
+            echo "ERROR: el frontend no quedó disponible."
+            sudo docker compose ps
+            sudo docker compose logs --tail=120
+            exit 1
+          '
