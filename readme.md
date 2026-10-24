@@ -207,4 +207,6 @@ Lo que reforcé con este proyecto fue el proceso de armar un despliegue con Acti
 
 <img width="966" height="391" alt="image" src="https://github.com/user-attachments/assets/a242f112-18e1-458d-8860-16d93ca2c2f4" />
 
+<img width="521" height="211" alt="image" src="https://github.com/user-attachments/assets/7e7c30ba-dcab-4966-8866-f6ac5a0ec4a0" />
+
 
