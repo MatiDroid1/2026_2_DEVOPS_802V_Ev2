@@ -200,3 +200,11 @@ Las dificultades a las que me enfrenté fueron en el despliegue en si, el pipeli
 Estas dificultades las fuí resolviendo viendo los ejemplos del profesor, he visto los repositorios que ha dejado durante las sesiones anteriores para poder ir orientandome en su construcción.
 Pero admito que hubieron errores que tuve que investigar en internet para poder dar con la solución, un ejemplo de ello fueron los permisos de mvnw que pedían permiso de ejecución. Teniendo que aplicar un chmod +x mvnw para que así pudiera ejecutar los comandos maven para el proyecto de spring.
 Lo que reforcé con este proyecto fue el proceso de armar un despliegue con Actions, porque a diferencia de los trabajos anteriores este contempló más pasos, por ende tuve que ver las nuevas configuraciones, los test de jacoco y su implementación para poder dar con el resultado.
+
+<img width="1000" height="193" alt="image" src="https://github.com/user-attachments/assets/517640c8-7b71-40af-9b07-c6f748f9781a" />
+
+<img width="1186" height="660" alt="image" src="https://github.com/user-attachments/assets/18abfa82-c47b-4bbb-ba46-1ba35f0e2981" />
+
+<img width="966" height="391" alt="image" src="https://github.com/user-attachments/assets/a242f112-18e1-458d-8860-16d93ca2c2f4" />
+
+
