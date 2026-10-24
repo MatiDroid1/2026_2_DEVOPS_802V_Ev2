@@ -191,9 +191,7 @@ docker compose down
 
 ## 9. Integrantes y conclusiones
 
-| Integrante | Rol / contribución |
-|---|---|
-| Keiton | _Completar_ |
+
 
 Matias: Durante la ejecución de este trabajo logre reforzar el despliegue de una aplicación usando docker en AWS. Mi rol se centró en el diseño de la página web, ajustar los estilos y colaborar en el despliegue. 
 Las dificultades a las que me enfrenté fueron en el despliegue en si, el pipeline tuvo varios errores al momento de ejecutar Github Actions, estás fueron en dar los permisos al maven wrapper, la estructuración del archivo deploy.yml y la configuración de SonarCloud y snyk.
