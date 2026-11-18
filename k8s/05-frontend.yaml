@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 932861612697.dkr.ecr.us-east-1.amazonaws.com/musica-frontend:ev3-v1
+          image: 932861612697.dkr.ecr.us-east-1.amazonaws.com/musica-frontend:ev3-v2
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
