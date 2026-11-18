@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: musica-config
+  namespace: musica
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  DB_URL: "jdbc:postgresql://postgres:5432/musica"
+  DB_USERNAME: "postgres"
+  POSTGRES_DB: "musica"
+  POSTGRES_USER: "postgres"
