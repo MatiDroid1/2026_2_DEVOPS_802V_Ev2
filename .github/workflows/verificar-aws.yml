@@ -7,6 +7,7 @@ on:
       - ev3-kubernetes
     paths:
       - '.github/workflows/verificar-aws.yml'
+
 permissions:
   contents: read
 
@@ -53,3 +54,50 @@ jobs:
             --name musica-ev3-v2 \
             --query 'cluster.{Nombre:name,Estado:status}' \
             --output table
+
+      - name: Comprobar SSH a la EC2 sin desplegar
+        shell: bash
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+          AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          for VARIABLE in AWS_HOST AWS_USER AWS_SSH_KEY; do
+            if [ -z "${!VARIABLE}" ]; then
+              echo "ERROR: falta el secreto $VARIABLE"
+              exit 1
+            fi
+          done
+
+          SSH_DIR=$(mktemp -d)
+          trap 'rm -rf "$SSH_DIR"' EXIT
+
+          printf '%s\n' "$AWS_SSH_KEY" | tr -d '\r' > "$SSH_DIR/key"
+          chmod 600 "$SSH_DIR/key"
+
+          printf '%s ssh-ed25519 %s\n' \
+            "$AWS_HOST" \
+            'AAAAC3NzaC1lZDI1NTE5AAAAIOeV1z7JsHRRYuNO5Ibr9V9SISuGQqGy6X1IBE0DEb5h' \
+            > "$SSH_DIR/known_hosts"
+
+          ssh \
+            -i "$SSH_DIR/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$AWS_USER@$AWS_HOST" \
+            'set -eu
+             echo "=== USUARIO REMOTO ==="
+             whoami
+             echo "=== SERVIDOR ==="
+             hostname
+             echo "=== IDENTIDAD AWS POR DEFECTO ==="
+             aws sts get-caller-identity \
+               --region us-east-1 \
+               --query Arn \
+               --output text \
+               --no-cli-pager'
