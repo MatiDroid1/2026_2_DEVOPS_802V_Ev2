@@ -1,0 +1,51 @@
+name: Verificar acceso AWS del laboratorio
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Comprobar identidad y acceso de lectura a EKS
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_PAGER: ""
+        run: |
+          set -euo pipefail
+
+          for VARIABLE in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
+            if [ -z "${!VARIABLE}" ]; then
+              echo "ERROR: falta el secreto $VARIABLE"
+              exit 1
+            fi
+          done
+
+          echo "=== IDENTIDAD AWS ==="
+          ARN=$(aws sts get-caller-identity --query Arn --output text)
+          echo "$ARN"
+
+          case "$ARN" in
+            arn:aws:sts::932861612697:assumed-role/voclabs/*)
+              echo "Identidad esperada confirmada."
+              ;;
+            *)
+              echo "ERROR: la identidad no corresponde a voclabs en la cuenta esperada."
+              exit 1
+              ;;
+          esac
+
+          echo "=== CLUSTER EKS ==="
+          aws eks describe-cluster \
+            --name musica-ev3-v2 \
+            --query 'cluster.{Nombre:name,Estado:status}' \
+            --output table
