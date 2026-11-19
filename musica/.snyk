@@ -1,0 +1,14 @@
+version: v1.25.0
+
+ignore:
+  SNYK-JAVA-ORGGLASSFISHJAXB-20883142:
+    - '*':
+        reason: >-
+          Excepcion temporal aceptada por el equipo para validar el
+          despliegue del laboratorio EV3. Dependencia transitiva de
+          Hibernate sin correccion publicada segun el aviso revisado.
+          La busqueda de usos XML directos no encontro coincidencias,
+          pero no demuestra ausencia de exposicion.
+          No usar como aprobacion para produccion.
+          Revisar y retirar tras la prueba.
+        expires: '2026-11-20T15:00:00.000Z'

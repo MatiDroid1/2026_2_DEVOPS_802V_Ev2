@@ -98,6 +98,7 @@ jobs:
         run: |
           snyk test \
             --file=pom.xml \
+            --policy-path=.snyk \
             --severity-threshold=high \
             --json-file-output=snyk-report.json
 
