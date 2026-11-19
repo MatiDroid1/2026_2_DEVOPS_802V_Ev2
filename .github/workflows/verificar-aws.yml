@@ -2,7 +2,11 @@ name: Verificar acceso AWS del laboratorio
 
 on:
   workflow_dispatch:
-
+  push:
+    branches:
+      - ev3-kubernetes
+    paths:
+      - '.github/workflows/verificar-aws.yml'
 permissions:
   contents: read
 
