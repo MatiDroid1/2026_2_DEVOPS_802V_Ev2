@@ -1,14 +1,16 @@
-# ==============================================================
-# MUSICA - CI/CD CON PRUEBAS, JACOCO, SNYK, SONAR Y DOCKER COMPOSE
-# se usa el ejemplo del profesor para armar este workflow de CI/CD :)
-# ==============================================================
-name: Musica CI-CD - Tests JaCoCo y Docker Compose
+name: Musica CI-CD - Calidad ECR y EKS
 
 on:
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
   push:
+    branches:
+      - ev3-kubernetes
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - '.vscode/**'
+      - '.github/workflows/verificar-aws.yml'
+  pull_request:
     branches:
       - main
 
@@ -16,67 +18,91 @@ permissions:
   contents: read
 
 concurrency:
-  group: musica-production
-  cancel-in-progress: true
+  group: musica-eks-production
+  cancel-in-progress: false
+
+env:
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_PAGER: ""
+  ECR_REGISTRY: 932861612697.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
-
-  seguridad_snyk:
-    name: Seguridad Snyk - Dependencias
+  calidad:
+    name: Pruebas JaCoCo Snyk y Sonar
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    outputs:
+      coverage: ${{ steps.coverage.outputs.value }}
 
     steps:
-      - name: 1. Descargar código
+      - name: Descargar código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: 2. Configurar Java 21
+      - name: Configurar Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
-      - name: 3. Instalar Snyk CLI
+      - name: Ejecutar pruebas y validar cobertura mínima
+        working-directory: musica
+        run: mvn -B clean verify
+
+      - name: Leer cobertura de líneas JaCoCo
+        id: coverage
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("musica/target/site/jacoco/jacoco.xml").getroot()
+          counter = root.find("./counter[@type='LINE']")
+          if counter is None:
+              raise SystemExit("ERROR: no hay contador LINE en JaCoCo")
+
+          covered = int(counter.attrib["covered"])
+          missed = int(counter.attrib["missed"])
+          total = covered + missed
+          if total == 0:
+              raise SystemExit("ERROR: JaCoCo no reportó líneas analizables")
+
+          coverage = round(100 * covered / total, 2)
+          print(f"Cobertura de líneas: {coverage}%")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"value={coverage}\n")
+          PY
+
+      - name: Publicar reportes de pruebas y cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pruebas-jacoco
+          path: |
+            musica/target/site/jacoco/
+            musica/target/surefire-reports/
+          if-no-files-found: warn
+
+      - name: Instalar Snyk CLI
         uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce
 
-      - name: 4. Dar permisos al Maven Wrapper
+      - name: Bloquear vulnerabilidades altas y críticas
         working-directory: musica
-        run: chmod +x mvnw
-
-      - name: 5. Preparar proyecto Maven
-        working-directory: musica
-        run: mvn -B -DskipTests clean install
-
-      - name: 6. Analizar dependencias
-        working-directory: musica
-        shell: bash
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          set +e
           snyk test \
             --file=pom.xml \
+            --policy-path=.snyk \
             --severity-threshold=high \
             --json-file-output=snyk-report.json
-          SNYK_EXIT_CODE=$?
-          set -e
 
-          echo "Código de salida Snyk: $SNYK_EXIT_CODE"
-
-          if [ "$SNYK_EXIT_CODE" -eq 0 ]; then
-            echo "Snyk terminó correctamente."
-            exit 0
-          fi
-
-          if [ "$SNYK_EXIT_CODE" -eq 1 ]; then
-            echo "Snyk encontró vulnerabilidades."
-            exit 0
-          fi
-
-          echo "Error técnico ejecutando Snyk."
-          exit "$SNYK_EXIT_CODE"
-
-      - name: 7. Publicar reporte Snyk
+      - name: Publicar reporte Snyk
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -84,227 +110,198 @@ jobs:
           path: musica/snyk-report.json
           if-no-files-found: warn
 
-  pruebas:
-    name: Pruebas unitarias y cobertura JaCoCo
-    needs: seguridad_snyk
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 1. Descargar código
-        uses: actions/checkout@v4
-
-      - name: 2. Configurar Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      - name: 3. Ejecutar pruebas y generar JaCoCo
-        working-directory: musica
-        run: mvn -B clean verify
-
-      - name: 4. Publicar reporte JaCoCo
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-musica
-          path: musica/target/site/jacoco/
-          if-no-files-found: error
-
-  sonarcloud:
-    name: Análisis estático SonarQube Cloud
-    needs: pruebas
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 1. Descargar código
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 2. Configurar Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      - name: 3. Preparar proyecto Maven
-        working-directory: musica
-        run: mvn -B -DskipTests install
-
-      - name: 4. Descargar reporte JaCoCo
-        uses: actions/download-artifact@v4
-        with:
-          name: jacoco-musica
-          path: musica/target/site/jacoco/
-
-      - name: 5. Validar configuración SonarQube Cloud
-        shell: bash
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-        run: |
-          test -n "$SONAR_TOKEN" || exit 1
-          test -n "$SONAR_PROJECT_KEY" || exit 1
-          test -n "$SONAR_ORGANIZATION" || exit 1
-          echo "Configuración SonarQube Cloud OK."
-
-      - name: 6. Ejecutar análisis SonarQube Cloud
+      - name: Analizar con Sonar y esperar Quality Gate
         working-directory: musica
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
         run: |
+          set -euo pipefail
+
+          test -n "$SONAR_TOKEN"
+          test -n "$SONAR_PROJECT_KEY"
+          test -n "$SONAR_ORGANIZATION"
+
           mvn -B \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
             -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
             -Dsonar.organization="$SONAR_ORGANIZATION" \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.token="$SONAR_TOKEN" \
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-            -Dsonar.qualitygate.wait=false
-
-  validar:
-    name: Validar Dockerfiles y Compose
-    needs: sonarcloud
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 1. Descargar código
-        uses: actions/checkout@v4
-
-      - name: 2. Validar archivos del proyecto
-        shell: bash
-        run: |
-          test -f musica/pom.xml
-          test -f musica/Dockerfile
-          test -f frontend/Dockerfile
-          test -f docker-compose.yml
-
-      - name: 3. Validar sintaxis de Docker Compose
-        run: docker compose config
-
-      - name: 4. Construir imágenes con Docker Compose
-        run: docker compose build
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.qualitygate.timeout=300
 
   deploy:
-    name: Desplegar stack en AWS EC2
-    needs: validar
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Publicar ECR y desplegar EKS
+    needs: calidad
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/ev3-kubernetes' ||
+       github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      IMAGE_TAG: ev3-${{ github.sha }}-${{ github.run_number }}-${{ github.run_attempt }}
+
     steps:
-      - name: 1. Descargar código
+      - name: Descargar código
         uses: actions/checkout@v4
 
-      - name: 2. Preparar clave SSH
+      - name: Validar identidad AWS y repositorios ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ARN=$(aws sts get-caller-identity --query Arn --output text)
+          echo "$ARN"
+
+          case "$ARN" in
+            arn:aws:sts::932861612697:assumed-role/voclabs/*) ;;
+            *)
+              echo "ERROR: identidad AWS inesperada"
+              exit 1
+              ;;
+          esac
+
+          aws ecr describe-repositories \
+            --repository-names musica-backend musica-frontend \
+            --query 'repositories[].repositoryUri' \
+            --output table
+
+      - name: Publicar cobertura en CloudWatch
+        env:
+          COVERAGE: ${{ needs.calidad.outputs.coverage }}
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace Musica/CICD \
+            --metric-data \
+            "MetricName=LineCoverage,Dimensions=[{Name=Application,Value=musica}],Value=$COVERAGE,Unit=Percent"
+
+      - name: Autenticar Docker en ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password |
+            docker login \
+              --username AWS \
+              --password-stdin "$ECR_REGISTRY"
+
+      - name: Construir y publicar backend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker build \
+            -f musica/Dockerfile \
+            -t "$ECR_REGISTRY/musica-backend:$IMAGE_TAG" \
+            ./musica
+
+          docker push "$ECR_REGISTRY/musica-backend:$IMAGE_TAG"
+
+      - name: Construir y publicar frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker build \
+            -f frontend/Dockerfile \
+            -t "$ECR_REGISTRY/musica-frontend:$IMAGE_TAG" \
+            .
+
+          docker push "$ECR_REGISTRY/musica-frontend:$IMAGE_TAG"
+
+      - name: Desplegar en EKS por SSH
         shell: bash
         env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
           AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
-          AWS_HOST: ${{ secrets.AWS_HOST }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$AWS_SSH_KEY" | tr -d '\r' > ~/.ssh/musica.pem
-          chmod 600 ~/.ssh/musica.pem
+          set -euo pipefail
 
-          for i in {1..30}; do
-            if ssh-keyscan -T 5 -H "$AWS_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
-              echo "SSH disponible."
-              exit 0
-            fi
-            echo "Esperando SSH... intento $i/30"
-            sleep 10
-          done
+          SSH_DIR=$(mktemp -d)
+          trap 'rm -rf "$SSH_DIR"' EXIT
 
-          echo "ERROR: EC2 no respondió por SSH."
-          exit 1
+          printf '%s\n' "$AWS_SSH_KEY" | tr -d '\r' > "$SSH_DIR/key"
+          chmod 600 "$SSH_DIR/key"
 
-      - name: 3. Esperar que Docker esté listo en la EC2
-        shell: bash
-        env:
-          AWS_HOST: ${{ secrets.AWS_HOST }}
-          AWS_USER: ${{ secrets.AWS_USER }}
-        run: |
-          for i in {1..72}; do
-            if ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" \
-              "sudo docker compose version" >/dev/null 2>&1; then
-              echo "EC2 preparada correctamente."
-              exit 0
-            fi
-            echo "Esperando Docker... intento $i/72"
-            sleep 10
-          done
+          printf '%s ssh-ed25519 %s\n' \
+            "$AWS_HOST" \
+            'AAAAC3NzaC1lZDI1NTE5AAAAIOeV1z7JsHRRYuNO5Ibr9V9SISuGQqGy6X1IBE0DEb5h' \
+            > "$SSH_DIR/known_hosts"
 
-          echo "ERROR: Docker no quedó disponible en la EC2."
-          exit 1
+          {
+            printf 'export AWS_ACCESS_KEY_ID=%q\n' "$AWS_ACCESS_KEY_ID"
+            printf 'export AWS_SECRET_ACCESS_KEY=%q\n' "$AWS_SECRET_ACCESS_KEY"
+            printf 'export AWS_SESSION_TOKEN=%q\n' "$AWS_SESSION_TOKEN"
+            printf 'export ECR_REGISTRY=%q\n' "$ECR_REGISTRY"
+            printf 'export IMAGE_TAG=%q\n' "$IMAGE_TAG"
 
-      - name: 4. Crear paquete para EC2
-        shell: bash
-        run: |
-          tar \
-            --exclude='.git' \
-            --exclude='*/target' \
-            --exclude='.env' \
-            -czf /tmp/musica-compose.tar.gz .
+            cat <<'REMOTE'
+          set -euo pipefail
+          export AWS_DEFAULT_REGION=us-east-1
+          export AWS_PAGER=""
 
-      - name: 5. Copiar proyecto a EC2
-        shell: bash
-        env:
-          AWS_HOST: ${{ secrets.AWS_HOST }}
-          AWS_USER: ${{ secrets.AWS_USER }}
-        run: |
-          scp -i ~/.ssh/musica.pem \
-            /tmp/musica-compose.tar.gz \
-            "$AWS_USER@$AWS_HOST:/tmp/musica-compose.tar.gz"
+          WORK_DIR=$(mktemp -d)
+          trap 'rm -rf "$WORK_DIR"' EXIT
+          export KUBECONFIG="$WORK_DIR/kubeconfig"
 
-          ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" '
-            set -e
-            sudo mkdir -p /opt/musica/current
-            sudo rm -rf /opt/musica/current/*
-            sudo tar -xzf /tmp/musica-compose.tar.gz -C /opt/musica/current
-            rm -f /tmp/musica-compose.tar.gz
-          '
+          aws eks update-kubeconfig \
+            --name musica-ev3-v2 \
+            --kubeconfig "$KUBECONFIG"
 
-      - name: 6. Orquestar contenedores con Docker Compose
-        shell: bash
-        env:
-          AWS_HOST: ${{ secrets.AWS_HOST }}
-          AWS_USER: ${{ secrets.AWS_USER }}
-        run: |
-          ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" '
-            set -e
-            cd /opt/musica/current
-            sudo docker compose up -d --build --remove-orphans
-            echo "Estado del stack:"
-            sudo docker compose ps
-          '
+          echo "=== ESTADO ANTERIOR ==="
+          kubectl get deployments -n musica
+          kubectl get deployments -n musica -o yaml \
+            > "$WORK_DIR/deployments-anteriores.yaml"
 
-      - name: 7. Esperar frontend y verificar despliegue
-        shell: bash
-        env:
-          AWS_HOST: ${{ secrets.AWS_HOST }}
-          AWS_USER: ${{ secrets.AWS_USER }}
-        run: |
-          ssh -i ~/.ssh/musica.pem "$AWS_USER@$AWS_HOST" '
-            set -e
-            cd /opt/musica/current
+          START=$(date +%s)
 
-            for i in {1..60}; do
-              if curl -fsS http://127.0.0.1/ >/dev/null 2>&1; then
-                echo "Frontend disponible."
-                sudo docker compose ps
-                exit 0
-              fi
-              echo "Esperando stack... intento $i/60"
-              sleep 5
-            done
+          kubectl set image deployment/musica-backend \
+            backend="$ECR_REGISTRY/musica-backend:$IMAGE_TAG" \
+            -n musica
 
-            echo "ERROR: el frontend no quedó disponible."
-            sudo docker compose ps
-            sudo docker compose logs --tail=120
-            exit 1
-          '
+          kubectl rollout status deployment/musica-backend \
+            -n musica --timeout=300s
+
+          kubectl set image deployment/musica-frontend \
+            frontend="$ECR_REGISTRY/musica-frontend:$IMAGE_TAG" \
+            -n musica
+
+          kubectl rollout status deployment/musica-frontend \
+            -n musica --timeout=300s
+
+          DURATION=$(( $(date +%s) - START ))
+
+          echo "=== ESTADO FINAL ==="
+          kubectl get deployments,pods -n musica
+
+          echo "Duración de actualización y rollout: $DURATION segundos"
+
+          aws cloudwatch put-metric-data \
+            --namespace Musica/CICD \
+            --metric-data \
+            "MetricName=DeploymentDuration,Dimensions=[{Name=Application,Value=musica}],Value=$DURATION,Unit=Seconds"
+
+          echo "DESPLIEGUE EKS COMPLETADO"
+          REMOTE
+          } | ssh \
+            -i "$SSH_DIR/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=3 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$AWS_USER@$AWS_HOST" \
+            'bash -s'
+
+      - name: Cerrar sesión Docker
+        if: always()
+        run: docker logout "$ECR_REGISTRY"

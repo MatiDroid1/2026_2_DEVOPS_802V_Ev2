@@ -1,0 +1,103 @@
+name: Verificar acceso AWS y EKS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ev3-kubernetes
+    paths:
+      - '.github/workflows/verificar-aws.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verificar acceso a EKS desde EC2
+        shell: bash
+        env:
+          AWS_HOST: ${{ secrets.AWS_HOST }}
+          AWS_USER: ${{ secrets.AWS_USER }}
+          AWS_SSH_KEY: ${{ secrets.AWS_SSH_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for VARIABLE in AWS_HOST AWS_USER AWS_SSH_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
+            if [ -z "${!VARIABLE}" ]; then
+              echo "ERROR: falta el secreto $VARIABLE"
+              exit 1
+            fi
+          done
+
+          SSH_DIR=$(mktemp -d)
+          trap 'rm -rf "$SSH_DIR"' EXIT
+
+          printf '%s\n' "$AWS_SSH_KEY" | tr -d '\r' > "$SSH_DIR/key"
+          chmod 600 "$SSH_DIR/key"
+
+          printf '%s ssh-ed25519 %s\n' \
+            "$AWS_HOST" \
+            'AAAAC3NzaC1lZDI1NTE5AAAAIOeV1z7JsHRRYuNO5Ibr9V9SISuGQqGy6X1IBE0DEb5h' \
+            > "$SSH_DIR/known_hosts"
+
+          {
+            printf 'export AWS_ACCESS_KEY_ID=%q\n' "$AWS_ACCESS_KEY_ID"
+            printf 'export AWS_SECRET_ACCESS_KEY=%q\n' "$AWS_SECRET_ACCESS_KEY"
+            printf 'export AWS_SESSION_TOKEN=%q\n' "$AWS_SESSION_TOKEN"
+
+            cat <<'REMOTE'
+          set -euo pipefail
+          export AWS_DEFAULT_REGION=us-east-1
+          export AWS_PAGER=""
+
+          WORK_DIR=$(mktemp -d)
+          trap 'rm -rf "$WORK_DIR"' EXIT
+          export KUBECONFIG="$WORK_DIR/kubeconfig"
+
+          echo "=== IDENTIDAD AWS REMOTA ==="
+          ARN=$(aws sts get-caller-identity --query Arn --output text)
+          echo "$ARN"
+
+          case "$ARN" in
+            arn:aws:sts::932861612697:assumed-role/voclabs/*)
+              echo "Identidad voclabs confirmada."
+              ;;
+            *)
+              echo "ERROR: identidad AWS inesperada."
+              exit 1
+              ;;
+          esac
+
+          aws eks update-kubeconfig \
+            --region us-east-1 \
+            --name musica-ev3-v2 \
+            --kubeconfig "$KUBECONFIG"
+
+          echo "=== DEPLOYMENTS ==="
+          kubectl --request-timeout=30s get deployments -n musica
+
+          echo "=== PERMISOS DE DESPLIEGUE ==="
+          kubectl --request-timeout=30s auth can-i \
+            patch deployment/musica-backend -n musica
+
+          kubectl --request-timeout=30s auth can-i \
+            patch deployment/musica-frontend -n musica
+
+          echo "VERIFICACION EKS COMPLETADA CORRECTAMENTE"
+          REMOTE
+          } | ssh \
+            -i "$SSH_DIR/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$AWS_USER@$AWS_HOST" \
+            'bash -s'

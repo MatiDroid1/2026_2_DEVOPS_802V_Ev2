@@ -1,4 +1,5 @@
 # Evaluación 2: Pipeline CI/CD con GitHub Actions
+# Evaluación 3: Monitoreo
 
 Microservicio de catálogo de álbumes (Spring Boot + PostgreSQL) con frontend en Nginx, contenerizado con Docker, orquestado con Docker Compose y desplegado automáticamente en AWS EC2 mediante un pipeline de GitHub Actions.
 
@@ -192,14 +193,10 @@ docker compose down
 ## 9. Integrantes y conclusiones
 
 
+Matias: A través del desarrollo de este caso conseguí repasar y fortalecer mis conocimientos sobre lo que significa preparar un despliegue, manteniendo seguridad y observabilidad en ella. La integración de Github Actions con controles automatizados como SonarQube o Snyk conseguí entender cómo revisar la calidad del código de un proyecto para así prevenir vulnerabilidades futuras para que estas no pasen a un entorno de producción. Además que pude reforzar la migración hacia EKS, manteniendo la persistencia con PostgreSQL, sumada a las métricas personalizadas para ir viendo el estado de la EC2 donde habita el proyecto. Con ello pude comprender la visibilidad y resiliencia de una arquitectura con microservicios, complementar con Amazon SNS para los avisos lo que hace que el proyecto sea auditable, tolerante a fallos y el uso de buenas prácticas para futuros proyectos.
 
-Matias: Durante la ejecución de este trabajo logre reforzar el despliegue de una aplicación usando docker en AWS. Mi rol se centró en el diseño de la página web, ajustar los estilos y colaborar en el despliegue. 
-Las dificultades a las que me enfrenté fueron en el despliegue en si, el pipeline tuvo varios errores al momento de ejecutar Github Actions, estás fueron en dar los permisos al maven wrapper, la estructuración del archivo deploy.yml y la configuración de SonarCloud y snyk.
-Estas dificultades las fuí resolviendo viendo los ejemplos del profesor, he visto los repositorios que ha dejado durante las sesiones anteriores para poder ir orientandome en su construcción.
-Pero admito que hubieron errores que tuve que investigar en internet para poder dar con la solución, un ejemplo de ello fueron los permisos de mvnw que pedían permiso de ejecución. Teniendo que aplicar un chmod +x mvnw para que así pudiera ejecutar los comandos maven para el proyecto de spring.
-Lo que reforcé con este proyecto fue el proceso de armar un despliegue con Actions, porque a diferencia de los trabajos anteriores este contempló más pasos, por ende tuve que ver las nuevas configuraciones, los test de jacoco y su implementación para poder dar con el resultado.
+Keiton: Mi rol se centró en la evolución de la arquitectura hacia la orquestación de contenedores y la observabilidad en la nube: configuración del clúster en Amazon EKS, gestión del almacenamiento persistente para PostgreSQL, integración de las métricas del backend y CI/CD en Amazon CloudWatch, y la configuración de alertas automatizadas mediante Amazon SNS. Los mayores desafíos estuvieron en asegurar que la comunicación interna entre los componentes en Kubernetes y la recolección de logs y métricas JVM funcionaran de manera estable, además de calibrar las reglas de seguridad en Snyk para detener efectivamente el pipeline ante vulnerabilidades críticas. Este proyecto reforzó en la práctica la importancia de la observabilidad y la seguridad continua en DevOps: no basta con automatizar el despliegue, sino que es indispensable contar con visibilidad en tiempo real y controles estrictos que impidan que código vulnerable llegue a producción. Finalmente, destaco nuevamente que el trabajo colaborativo con mi compañero fue fundamental para abordar la complejidad de esta entrega, complementando nuestras habilidades técnicas y criterios para resolver los inconvenientes durante la implementación.
 
-Keiton: Mi rol se centró en la arquitectura de infraestructura como código y la integración continua: creación de los Dockerfiles, configuración de las redes y volúmenes en Docker Compose, y la automatización del pipeline en GitHub Actions. Los mayores desafíos estuvieron en asegurar que el despliegue SSH a la máquina EC2 fuera completamente desatendido y tolerante a fallos, además de calibrar el análisis estático de SonarQube Cloud para que validara correctamente el código nuevo. Este proyecto reforzó en la práctica la mentalidad DevOps: el código no solo debe funcionar y compilar, sino superar análisis de vulnerabilidades, pruebas unitarias y empaquetarse de forma segura antes de tocar producción. También me gustaría recalcar que el poder realizar un trabajo colaborativo con mi compañero ayudó mucho a poder realizar con éxito este trabajo poniendo en acción las habilidades individuales de cada uno para una mejor organización y tener punto de vista distinto ante los inconvenientes que puedan haber al desarrollar esta solución.
 
 <img width="1000" height="193" alt="image" src="https://github.com/user-attachments/assets/517640c8-7b71-40af-9b07-c6f748f9781a" />
 
@@ -209,4 +206,211 @@ Keiton: Mi rol se centró en la arquitectura de infraestructura como código y l
 
 <img width="521" height="211" alt="image" src="https://github.com/user-attachments/assets/7e7c30ba-dcab-4966-8866-f6ac5a0ec4a0" />
 
+Prueba 3
+# Evaluación 3: observabilidad y controles de seguridad en AWS
+
+Esta etapa extiende el proyecto de catálogo de música y su pipeline CI/CD mediante un despliegue en Amazon EKS, la incorporación de observabilidad con Amazon CloudWatch y la ejecución de controles de calidad y seguridad.
+
+La aplicación está compuesta por un frontend desarrollado con HTML, CSS y JavaScript, un backend con Java 21 y Spring Boot, y una base de datos PostgreSQL.
+
+## Objetivos
+
+- Desplegar los componentes de la aplicación en Kubernetes sobre AWS.
+- Comprobar la comunicación interna y el estado de los servicios.
+- Centralizar logs y visualizar métricas de la aplicación.
+- Incorporar al dashboard resultados del proceso CI/CD.
+- Ejecutar controles automatizados de calidad y seguridad.
+- Configurar notificaciones de infraestructura mediante CloudWatch y Amazon SNS.
+
+## Tecnologías utilizadas
+
+| Tecnología | Uso |
+| --- | --- |
+| GitHub Actions | Ejecución del pipeline CI/CD. |
+| JaCoCo | Generación del reporte de cobertura de pruebas. |
+| SonarQube Cloud | Análisis de calidad y evaluación del Quality Gate. |
+| Snyk | Análisis de vulnerabilidades en dependencias. |
+| Amazon ECR | Almacenamiento de imágenes de contenedores. |
+| Amazon EKS | Ejecución de la aplicación en Kubernetes. |
+| PostgreSQL | Persistencia de los datos de la aplicación. |
+| Spring Boot Actuator | Exposición de endpoints de salud y métricas. |
+| Amazon CloudWatch | Consulta de logs, métricas, dashboards y alarmas. |
+| Amazon SNS | Envío de notificaciones por correo electrónico. |
+
+## Entorno de despliegue
+
+| Recurso | Configuración documentada |
+| --- | --- |
+| Región de AWS | `us-east-1` |
+| Clúster EKS | `musica-ev3-v2` |
+| Namespace de Kubernetes | `musica` |
+| Grupo de nodos | `musica-nodos-v2` |
+| Tipo de instancia del nodo | `t3.medium` |
+| Sistema operativo del nodo | Amazon Linux 2023 |
+| Rama utilizada | `ev3-kubernetes` |
+| Workflow | `deploy.yml` |
+
+En el namespace `musica` se desplegaron el frontend, el backend y PostgreSQL.
+
+Durante la validación documentada, los tres componentes presentaron una réplica disponible y sus pods se encontraban en estado `Running`.
+
+### Almacenamiento de PostgreSQL
+
+Se verificó el enlace de los siguientes recursos:
+
+- PersistentVolume: `musica-postgres-pv`.
+- PersistentVolumeClaim: `postgres-data`.
+- Capacidad declarada: `2 GiB`.
+- Modo de acceso: `ReadWriteOnce`.
+- Política de recuperación del volumen: `Retain`.
+- Estado observado del enlace: `Bound`.
+
+Posteriormente se comprobó el arranque de PostgreSQL y la conexión del backend con la base de datos.
+
+## Pipeline CI/CD
+
+El workflow integra las siguientes actividades:
+
+1. Ejecución de pruebas y generación del reporte de cobertura.
+2. Análisis de calidad con SonarQube Cloud.
+3. Análisis de dependencias con Snyk.
+4. Publicación de imágenes en Amazon ECR, cuando los controles configurados permiten continuar.
+5. Despliegue en Amazon EKS y comprobación de los rollouts.
+6. Publicación de métricas del proceso CI/CD en CloudWatch.
+
+### Resultados documentados
+
+| Indicador | Resultado |
+| --- | --- |
+| Cobertura de líneas | `96,15 %` |
+| Cobertura presentada en el dashboard | `96,2 %`, por redondeo |
+| Duración del segmento de despliegue medido | `39 segundos` |
+| Duración total del workflow exitoso | `3 minutos y 25 segundos` |
+| Quality Gate de SonarQube Cloud | `PASSED` en la ejecución presentada |
+
+La duración de 39 segundos corresponde al segmento comprendido desde la actualización del backend hasta la finalización de ambos rollouts. No corresponde a la duración total del workflow.
+
+Los valores describen ejecuciones específicas y no garantizan que todas las ejecuciones futuras tengan los mismos resultados.
+
+### Análisis de seguridad
+
+En una ejecución de Snyk se analizaron 98 dependencias y se detectaron dos vulnerabilidades: una de severidad alta y otra crítica. El paso finalizó con código de salida `1`.
+
+La ejecución con hallazgos y la ejecución posterior exitosa deben interpretarse por separado. Un resultado posterior exitoso no demuestra, por sí solo, que las vulnerabilidades hayan sido corregidas.
+
+Los reportes y el historial de GitHub Actions permiten revisar el resultado de cada control y la continuidad de los trabajos posteriores.
+
+## Observabilidad con Amazon CloudWatch
+
+### Integración con EKS
+
+Se instaló el add-on Amazon CloudWatch Observability en el clúster `musica-ev3-v2`.
+
+Durante la verificación se comprobó:
+
+- La ejecución de los componentes de observabilidad.
+- La recepción de logs.
+- La recepción de muestras de `cluster_node_count`, con un nodo reportado.
+
+La configuración documentada conservó `monitorAllServices: false`. La recolección del backend se configuró de forma específica.
+
+### Endpoints del backend
+
+Se verificaron los siguientes endpoints mediante el servicio interno del backend:
+
+| Endpoint | Resultado observado |
+| --- | --- |
+| `/actuator/health` | Estado `UP`. |
+| `/actuator/prometheus` | Respuesta HTTP `200` y exposición de métricas. |
+
+Dirección interna utilizada para la recolección:
+
+```text
+http://musica.musica.svc.cluster.local:8080/actuator/prometheus
+```
+
+Esta dirección corresponde al servicio interno de Kubernetes, no a una URL pública de acceso.
+
+### Métricas del backend
+
+Se configuró un intervalo de recolección de 60 segundos y el envío de métricas a CloudWatch mediante EMF.
+
+| Recurso | Valor |
+| --- | --- |
+| Namespace de métricas | `Musica/Backend` |
+| Grupo de logs | `/aws/containerinsights/musica-ev3-v2/prometheus` |
+
+Métricas seleccionadas:
+
+| Métrica | Descripción |
+| --- | --- |
+| `jvm_memory_used_bytes` | Memoria utilizada por los pools de la JVM. |
+| `jvm_threads_live_threads` | Cantidad de hilos activos de la JVM. |
+| `process_uptime_seconds` | Tiempo transcurrido desde el inicio del proceso. |
+
+### Dashboard
+
+El dashboard `musica-ev3-observabilidad` reúne información de:
+
+- Uso de CPU y memoria.
+- Estado de preparación de componentes.
+- Logs del frontend y del backend.
+- Errores registrados.
+- Métricas de la JVM.
+- Cobertura de pruebas.
+- Duración del despliegue.
+
+Las métricas de cobertura y duración se publicaron desde GitHub Actions en el namespace `Musica/CICD`.
+
+### Interpretación de logs
+
+En el intervalo consultado se encontraron errores históricos de conexión del backend hacia `postgres:5432`.
+
+Estos registros corresponden a intentos de conexión durante un arranque anterior. No se utilizan como evidencia de que PostgreSQL continuaba fallando después del despliegue validado.
+
+## Notificaciones con Amazon SNS
+
+Como monitoreo complementario de infraestructura, se configuró una alarma para la instancia EC2 `evaluacion2`.
+
+| Campo | Configuración |
+| --- | --- |
+| Alarma | `evaluacion2-ec2-salud` |
+| Instancia supervisada | `i-0393e7101782d6393` |
+| Namespace | `AWS/EC2` |
+| Métrica | `StatusCheckFailed` |
+| Estadística | Máximo |
+| Período | 1 minuto |
+| Umbral | Mayor o igual a `1` |
+| Puntos de datos | `2 de 2` |
+| Datos ausentes | Tratados como faltantes |
+| Estado que activa la notificación | `ALARM` |
+| Tema SNS | `musica-ev3-alertas` |
+| Protocolo de suscripción | Correo electrónico |
+
+Después de crear la alarma, la consola mostró el estado `CORRECTO` y las acciones habilitadas. También se recibió un correo de AWS Notifications asociado a la alarma.
+
+La recepción del correo acredita la entrega de la notificación. Por sí sola, no acredita una falla real de la instancia ni una prueba de saturación de memoria.
+
+Esta alarma supervisa la instancia EC2 indicada. No se presenta como una alarma del clúster EKS, ya que no se ha acreditado que dicha instancia pertenezca al clúster.
+
+## Alcance de la automatización
+
+Se distingue entre:
+
+- Preparación del entorno: configuración inicial de EKS, almacenamiento, observabilidad, dashboard y recursos de notificación.
+- Ejecución del pipeline: pruebas, análisis, publicación y despliegue según las condiciones del workflow, y publicación de métricas CI/CD.
+
+No se considera que toda la infraestructura se recree automáticamente en cada ejecución del pipeline.
+
+## Evidencias
+
+Las evidencias del trabajo se encuentran  en el informe de la evaluación y en el historial de GitHub Actions:
+
+- Estado de los componentes desplegados en EKS.
+- Enlace del almacenamiento persistente de PostgreSQL.
+- Validación de salud y métricas del backend.
+- Dashboard de observabilidad.
+- Resultados de pruebas, calidad y seguridad.
+- Ejecución del despliegue.
+- Configuración de la alarma y recepción del correo SNS.
 

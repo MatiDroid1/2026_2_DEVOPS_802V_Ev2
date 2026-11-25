@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: musica-frontend
+  namespace: musica
+spec:
+  type: ClusterIP
+  selector:
+    app: musica-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: musica-frontend
+  namespace: musica
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: musica-frontend
+  template:
+    metadata:
+      labels:
+        app: musica-frontend
+        app.kubernetes.io/part-of: musica
+    spec:
+      containers:
+        - name: frontend
+          image: 932861612697.dkr.ecr.us-east-1.amazonaws.com/musica-frontend:ev3-v2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
