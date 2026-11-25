@@ -413,4 +413,11 @@ Las evidencias del trabajo se encuentran  en el informe de la evaluación y en e
 - Resultados de pruebas, calidad y seguridad.
 - Ejecución del despliegue.
 - Configuración de la alarma y recepción del correo SNS.
+- 
+<img width="787" height="446" alt="image" src="https://github.com/user-attachments/assets/ea73b5e8-7126-4104-9658-58632f088993" />
+-
+<img width="742" height="393" alt="image" src="https://github.com/user-attachments/assets/e767d634-96cf-426b-a340-d606ad96f370" />
+-
+<img width="780" height="728" alt="image" src="https://github.com/user-attachments/assets/a0fd7da6-1f72-4444-b6b6-eff30fefe75a" />
+
 
